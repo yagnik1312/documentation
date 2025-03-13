@@ -10,7 +10,7 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Seamless Integration',
+    title: 'Seamlesss Integration',
     Svg: require('@site/static/img/undraw_integration.svg').default,
     description: (
       <>
