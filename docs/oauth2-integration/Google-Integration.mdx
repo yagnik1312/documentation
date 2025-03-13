@@ -1,0 +1,168 @@
+---
+sidebar_position: 1
+---
+
+
+# Google Integration
+
+Learn how to integrate **OAuth 2.0** into your application.
+
+## Getting Started
+
+To integrate OAuth 2.0, you'll need Google OAuth credentials, which include:
+
+- `Client ID`
+- `Client Secret`
+
+You can obtain these from [Google Developer Credentials](https://console.developers.google.com/) after creating a project and setting up OAuth consent.
+
+### What you'll need
+
+- Node.js version 18.0 or above
+- Google OAuth credentials
+
+## Backend Integration
+
+### Step 1: Install Dependencies
+
+Navigate to your backend directory and install the required dependencies:
+
+```bash
+npm install passport passport-google-oauth20
+```
+
+### Step 2: Add Google OAuth Credentials to .env File
+
+Create a `.env` file and add your Google OAuth credentials:
+
+```plaintext
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+```
+
+### Step 3: Create GoogleStrategy with Passport
+
+Create a file named `google_oauth.js` and add the following code:
+
+```javascript
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: "http://backend/auth/google/callback",
+      passReqToCallback: true,
+    },
+    function (request, accessToken, refreshToken, profile, cb) {
+      return cb(null, profile);
+    }
+  )
+);
+```
+ callbackURL will be called when user is authenticated.
+ callbackURL should be matched with Authorised redirect URIs of [Google Developer Credentials](https://console.developers.google.com/)
+
+
+### Step 4: Setup OAuth Routes
+
+Create an `oauth.js` file and add the following:
+
+```javascript
+import { Router } from "express";
+import passport from "passport";
+import "./google_oauth.js";
+
+const router = Router();
+
+router.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["email", "profile"] })
+);
+
+router.get(
+  "/auth/google/callback",
+  passport.authenticate("google", {
+    session: false,
+    failureRedirect: "your-frontend-login-url",
+  }),
+  function (req, res) {
+    const user = req.user;
+    // Authentication successful
+    // Process user as per your requirement, e.g., create a JWT token and pass it to the frontend
+    res.redirect("your-frontend-home-url");
+  }
+);
+
+export default router;
+```
+- Over here the route `/auth/google` is called when the user clicks Log in with Google in the browser. 
+Behind the scenes, passport communicates with Google and directs the user to their respective consent screen.
+
+- The consent screen tells users who is requesting access to their data and what kind of data the
+ app is asking to access. The latter part of the statement comes under scope. In our app, we need access to the user's Google profile and email address, thus added it to the scope object.
+
+- When an end-user approves our app in the consent screen, the redirect api's `(/auth/google/callback)` are invoked , req.user object is already set to the appropriate redirection(callback) URL through passport and the user lands on a page basis that.
+
+- Since we are not maintaining session through cookies thus an additional session: false key was passed.
+
+## Frontend Integration
+
+### Step 1: Create Login with Google Button
+
+Create a simple login button component:
+
+```javascript
+import React from 'react';
+
+const App = () => {
+  const handleGoogleLogin = () => {
+    window.location.href = 'http://backend/auth/google';
+  };
+
+  return (
+    <div>
+      <h1>Google OAuth Authentication</h1>
+      <button onClick={handleGoogleLogin}>Login with Google</button>
+    </div>
+  );
+};
+
+export default App;
+```
+
+### Step 2: Store JWT Token After Authentication
+
+Create an authentication success page to store the JWT token:
+
+```javascript
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+const AuthSuccess = () => {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token');
+
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('token', token);
+    }
+  }, [token]);
+
+  return (
+    <div>
+      <h1>Authentication Successful</h1>
+      {token && (
+        <div>
+          <p>Welcome</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AuthSuccess;
+```
+

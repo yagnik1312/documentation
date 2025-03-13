@@ -1,0 +1,162 @@
+---
+sidebar_position: 1
+---
+
+# Job Scheduling with PostgreSQL and PgBoss
+
+Learn how to implement job scheduling in your application using PostgreSQL and PgBoss.
+
+## Getting Started
+
+To schedule jobs efficiently, we will use [PgBoss](https://github.com/timgit/pg-boss), a job queue built on PostgreSQL.
+
+### Prerequisites
+
+- Node.js (version 18 or above)
+- PostgreSQL database
+
+## Backend Integration
+
+### Step 1: Install Dependencies
+
+Navigate to your backend directory and install PgBoss:
+
+```bash
+npm install pg-boss
+```
+
+### Step 2: Define JobQueues Enum
+
+Create a `CommonConstants.ts` file and define job queue names as an enum:
+
+```typescript
+export enum JobQueues {
+  expireSubscriptionQueue = "expire_subscription",
+  deadLetterQueue = "dead_letter_queue",
+}
+```
+
+### Step 3: Create Job Scheduler Utility
+
+Create a `scheduleJob.ts` file to configure and start PgBoss:
+
+```typescript
+import PgBoss from "pg-boss";
+import { logger } from "./logger";
+import { JobQueues } from "./CommonConstants";
+
+const boss = new PgBoss("postgres://user:password@localhost:5432/dbname");
+
+// Handle PgBoss errors
+boss.on("error", (error) => logger.error(`PG-Boss Error: ${error}`));
+
+// Function to start PgBoss
+const startPgBoss = async () => {
+  await boss.start();
+  logger.info("PG-Boss started successfully ⏳");
+};
+
+// Function to register job queues
+export async function registerJobs() {
+  try {
+    await startPgBoss();
+    await Promise.all(
+      Object.values(JobQueues).map((queue) => boss.createQueue(queue))
+    );
+    logger.info("Job queues registered successfully ✅");
+  } catch (error) {
+    logger.error(`Error registering jobs: ${error}`);
+  }
+}
+
+export default boss;
+```
+
+### Step 4: Create Job Handlers
+
+Create a `jobs` folder and separate files for each job. Below is a simple example of handling expired subscriptions.
+
+#### `expireSubscriptionJob.ts`
+
+```typescript
+import boss from "../utils/scheduleJob";
+import { logger } from "../utils/logger";
+import { JobQueues } from "../utils/CommonConstants";
+
+// Worker function to process subscription expiration jobs
+export const expireSubscriptionJob = async (job: any) => {
+  try {
+    const { subscriptionId } = job.data;
+    logger.info(`Processing expiration for Subscription ID: ${subscriptionId}`);
+    // Add logic to update subscription status in database
+  } catch (error) {
+    logger.error(`Error in expire_subscription job: ${error}`);
+    throw error;
+  }
+};
+
+// Function to schedule a subscription expiration job
+export async function scheduleSubscriptionExpiration(
+  subscriptionId: number,
+  expireAt: string | Date
+) {
+  await boss.send(
+    JobQueues.expireSubscriptionQueue,
+    { subscriptionId, queue:JobQueues.expireSubscriptionQueue  },
+    {
+      startAfter: expireAt, // Delay job execution until this timestamp
+      retryDelay: 30, // Time (in seconds) to wait before retrying a failed job
+      deadLetter: JobQueues.deadLetterQueue, // Queue where failed jobs are sent after exceeding retry attempts
+    }
+  );
+  logger.info(
+    `Scheduled expiration for Subscription ID: ${subscriptionId} at ${expireAt}`
+  );
+}
+```
+When new subscription is created `scheduleSubscriptionExpiration` is called to auto expire of the subscription.
+
+
+### Step 5: Register Jobs and Dead-Letter Queue Worker
+
+Modify `registerJobs` function in `scheduleJob.ts`:
+
+```typescript
+import { expireSubscriptionJob } from "../jobs/expireSubscriptionJob";
+
+export async function registerJobs() {
+  try {
+    await startPgBoss();
+    await Promise.all(
+      Object.values(JobQueues).map((queue) => boss.createQueue(queue))
+    );
+
+    // Register worker for subscription expiration queue
+    await boss.work(JobQueues.expireSubscriptionQueue, expireSubscriptionJob);
+
+    // Register worker for dead-letter queue to handle failed jobs
+    await boss.work(JobQueues.deadLetterQueue, async (job) => {
+      logger.error(
+        `Dead-letter queue received failed job: ${JSON.stringify(job)}`
+      );
+      const { queue } = job?.[0]?.data as any;
+      await boss.send(
+        queue, // The queue where the job will be sent
+        { ...job?.[0]?.data as any },
+        {
+          retryLimit: 3,
+          retryDelay: 60, // Time (in seconds) to wait before retrying a failed job
+        }
+      );
+    });
+
+    logger.info("Jobs registered successfully ✅");
+  } catch (error) {
+    logger.error(`Error registering jobs: ${error}`);
+  }
+}
+```
+
+## Conclusion
+
+You have successfully implemented job scheduling with PostgreSQL and PgBoss. Now, you can efficiently manage background jobs in your application.

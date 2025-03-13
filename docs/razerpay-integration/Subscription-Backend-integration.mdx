@@ -1,0 +1,190 @@
+---
+sidebar_position: 3
+---
+
+# Integrating Subscription Payment Razorpay in Backend
+
+Learn how to integrate **Razorpay** into the backend of your Application.
+
+## Prerequisites
+
+Before you start, ensure you have the following:
+
+- Node.js version 18.0 or above
+- Razorpay account credentials (Key ID and Key Secret)
+
+## Steps to Integrate Razorpay
+
+### Step 1: Add Razorpay Credentials to .env File
+
+Create a `.env` file in the root directory of your backend project and add your Razorpay credentials:
+
+```env
+RAZORPAY_KEY_ID=your_key_id
+RAZORPAY_SECRET=your_key_secret
+```
+
+### Step 2: Create Razorpay Instance
+
+Create a file named payment.js
+
+```import Razorpay from 'razorpay';
+import 'dotenv/config';
+
+const razorpayInstance = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_SECRET,
+});
+```
+
+### Step 3: Create subscription API Route
+
+Create an API route to generate a subscription:
+
+```import express from 'express';
+import crypto from 'crypto';
+
+const router = express.Router();
+
+// Route: POST http://localhost:4000/api/payment/order
+router.post('/subscription', (req, res) => {
+
+    try {
+     const { planId } = req.body;
+    // Find the plan in the database
+    const plan = await Plan.findOne({
+      raw: true,
+      where: { Id: planId },
+      attributes: ["planId", "billingCycle"],
+    });
+
+    if (!plan) {
+      return setResponse(
+        res,
+        CommonConstants.API_RESPONSE_STATUS_BAD_REQUEST,
+        "E",
+        "Plan not found!",
+        {}
+      );
+    }
+
+    // Create options for the Razorpay subscription
+    const options: any = {
+      plan_id: plan?.planId as string, // Razorpay Plan ID
+      customer_notify: 1,
+      total_count: plan?.billingCycle?.toLowerCase() === "yearly" ? 12 : 1,
+    };
+
+    // Create a new subscription with Razorpay
+    razorPayInstance.subscriptions.create(
+      options,
+      async (error, subscription) => {
+        if (error) {
+          return setResponse(
+            res,
+            CommonConstants.API_RESPONSE_STATUS_INTERNAL_SERVER_ERROR,
+            "E",
+            "Something went wrong!",
+            { error }
+          );
+        }
+
+        // Save the subscription in the database
+        createRazorSubscription(subscription);
+        return res.status(200).json({message:"Subscription created successfully",subscription})
+      }
+    );
+
+    } catch (error) {
+        res.status(500).json({ message: "Internal Server Error!" });
+        console.log(error);
+    }
+});
+
+export default router;
+
+```
+
+### Step 4: Create Verify API Route
+
+Create an API route to verify the payment:
+
+```import express from 'express';
+import crypto from 'crypto';
+import Payment from '../models/Payment.js'; // Adjust path as necessary
+
+const router = express.Router();
+
+// Route: POST http://localhost:4000/api/payment/verify
+router.post('/verify', async (req, res) => {
+   const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      razorpay_subscription_id,
+    } = req.body;
+
+    try {
+        // Create sign string based on whether it's an order or subscription
+        const sign = razorpay_order_id
+          ? razorpay_order_id + "|" + razorpay_payment_id
+          : razorpay_payment_id + "|" + razorpay_subscription_id;
+
+        // Create ExpectedSign
+        const expectedSign = crypto.createHmac("sha256", process.env.RAZORPAY_SECRET)
+            .update(sign.toString())
+            .digest("hex");
+
+        // Verify Signature
+        const isAuthentic = expectedSign === razorpay_signature;
+
+        // Process Payment
+        if (isAuthentic) {
+            const payment = await Payment.create({
+               razorpayOrderId: razorpay_order_id,
+               razorpayPaymentId: razorpay_payment_id,
+               razorpaySignature: razorpay_signature,
+               razorpaySubscriptionId: razorpay_subscription_id,
+            });
+
+            res.json({
+                message: "Payment Successfully",
+            });
+        } else {
+            res.status(400).json({ message: "Invalid Signature" });
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error!" });
+    }
+});
+
+export default router;
+
+```
+
+### Step 5: Usage in Your Server Setup
+
+In your main server file (server.js or app.js), set up the server to use the payment routes:
+
+```import express from 'express';
+import dotenv from 'dotenv';
+import paymentRoutes from './routes/payment.js';
+
+const app = express();
+dotenv.config();
+
+app.use(express.json());
+app.use('/api/subscription', paymentRoutes);
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+```
+
+## Conclusion
+
+You have successfully integrated Razorpay into the backend of your Application. Now, you can create subscription and verify payments using the Razorpay API.
+
+This structure divides the integration process into clear, sequential steps, starting from setting up Razorpay credentials to creating Razorpay instance, implementing API routes for ordering and verifying payments, and finally configuring your server to use these routes. Each step focuses on a specific task, making it easier to follow and implement.

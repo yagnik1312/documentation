@@ -1,0 +1,161 @@
+---
+sidebar_position: 2
+---
+
+# Microsoft Integration
+
+Learn how to integrate **Microsoft OAuth 2.0** into your application.
+
+## Getting Started
+
+To integrate Microsoft OAuth 2.0, you'll need Microsoft OAuth credentials, which include:
+
+- `Client ID`
+- `Client Secret`
+
+You can obtain these from [Microsoft Azure Portal](https://portal.azure.com/) after **new App registrations**.
+
+### What you'll need
+
+- Node.js version 18.0 or above
+- Microsoft OAuth credentials
+
+## Backend Integration
+
+### Step 1: Install Dependencies
+
+Navigate to your backend directory and install the required dependencies:
+
+```bash
+npm install passport passport-microsoft
+```
+
+### Step 2: Add Microsoft OAuth Credentials to .env File
+
+Create a `.env` file and add your Microsoft OAuth credentials:
+
+```plaintext
+MICROSOFT_CLIENT_ID=your_client_id
+MICROSOFT_CLIENT_SECRET=your_client_secret
+```
+
+### Step 3: Create MicrosoftStrategy with Passport
+
+Create a file named `microsoft_oauth.js` and add the following code:
+
+```javascript
+import passport from "passport";
+import { Strategy as MicrosoftStrategy } from "passport-microsoft";
+
+passport.use(
+  new MicrosoftStrategy(
+    {
+      clientID: process.env.MICROSOFT_CLIENT_ID,
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+      scope: ["openid", "profile", "email"],
+      callbackURL: "http://backend/auth/microsoft/callback",
+    },
+    function (request, accessToken, refreshToken, profile, cb) {
+      return cb(null, profile);
+    }
+  )
+);
+```
+
+### Step 4: Setup OAuth Routes
+
+Create an `oauth.js` file and add the following:
+
+```javascript
+import { Router } from "express";
+import passport from "passport";
+import "./microsoft_oauth.js";
+
+const router = Router();
+
+router.get("/auth/microsoft", passport.authenticate("microsoft"));
+
+router.get(
+  "/auth/microsoft/callback",
+  passport.authenticate("microsoft", {
+    session: false,
+    failureRedirect: "your-frontend-login-url",
+  }),
+  function (req, res) {
+    const user = req.user;
+    // Authentication successful
+    // Process user as per your requirement, e.g., create a JWT token and pass it to the frontend
+    res.redirect("your-frontend-home-url");
+  }
+);
+
+export default router;
+```
+
+- The route `/auth/microsoft` is called when the user clicks **Log in with Microsoft** in the browser. Behind the scenes, Passport communicates with Microsoft and directs the user to their respective consent screen.
+
+- The consent screen informs users who is requesting access to their data and what kind of data the app is requesting. This is determined by the scope. In our case, we need access to the user's Microsoft profile and email address, so we added these scopes.
+
+- When the user approves the app on the consent screen, the redirect API `/auth/microsoft/callback` is triggered. The `req.user` object is automatically set, and the user is redirected to the appropriate page based on the callback URL.
+
+- Since we are not maintaining session-based authentication using cookies, we explicitly pass `session: false` to disable session storage.
+
+
+## Frontend Integration
+
+### Step 1: Create Login with Microsoft Button
+
+Create a simple login button component:
+
+```javascript
+import React from 'react';
+
+const App = () => {
+  const handleMicrosoftLogin = () => {
+    window.location.href = 'http://backend/auth/microsoft';
+  };
+
+  return (
+    <div>
+      <h1>Microsoft OAuth Authentication</h1>
+      <button onClick={handleMicrosoftLogin}>Login with Microsoft</button>
+    </div>
+  );
+};
+
+export default App;
+```
+
+### Step 2: Store JWT Token After Authentication
+
+Create an authentication success page to store the JWT token:
+
+```javascript
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+const AuthSuccess = () => {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token');
+
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('token', token);
+    }
+  }, [token]);
+
+  return (
+    <div>
+      <h1>Authentication Successful</h1>
+      {token && (
+        <div>
+          <p>Welcome</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AuthSuccess;
+```
+

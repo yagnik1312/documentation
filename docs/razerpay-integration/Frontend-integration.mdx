@@ -1,0 +1,129 @@
+---
+sidebar_position: 4
+---
+
+# Integrating Razorpay in Frontend
+
+Learn how to integrate **Razorpay** into the frontend of your Application.
+
+## Prerequisites
+
+Before you start, ensure you have the following:
+
+- Backend setup with Razorpay integration
+- Razorpay account credentials (Key ID and Key Secret)
+
+### Step 1: Create .env File
+
+Create a `.env` file in the root directory of your frontend project and add your backend host URL and Razorpay credentials:
+
+````env
+BACKEND_HOST_URL=http://localhost:4000
+RAZORPAY_KEY_ID=your_key_id
+
+### Step 2: Create handlePayment Method
+Create a method to handle the payment process and create an order:
+
+```// handlePayment Function
+const handlePayment = async () => {
+try {
+    // For single payment (Order)
+    //const res = await fetch(`${import.meta.env.VITE_BACKEND_HOST_URL}/api/payment/order`, {
+    //    method: "POST",
+    //    headers: {
+    //    "content-type": "application/json"
+    //    },
+    //    body: JSON.stringify({
+    //    amount // Amount in the smallest currency unit
+    //    })
+    //});
+
+     // For Subscription
+     const res = await fetch(`${import.meta.env.VITE_BACKEND_HOST_URL}/api/payment/subscription`, {
+        method: "POST",
+        headers: {
+        "content-type": "application/json"
+        },
+        body: JSON.stringify({
+        planId // Amount in the smallest currency unit
+        })
+     });
+        const data = await res.json();
+        console.log(data);
+        handlePaymentVerify(data.data);
+    } catch (error) {
+        console.log(error);
+    }
+
+};
+
+````
+
+### Step 3: Create handlePaymentVerify Method
+
+Create a method to verify the payment after the user completes the Razorpay checkout:
+
+```
+  // handlePaymentVerify Function
+  const handlePaymentVerify = async (data: any) => {
+    const options = {
+      key: process.env.REACT_APP_RAZORPAY_KEY_ID,
+      amount: data.amount,
+      currency: data.currency,
+      name: "Synoverge",
+      description: "Test Mode",
+      order_id:
+        data?.entity == "subscription" ? data?.order_id ?? null : data?.id,
+      subscription_id: data?.entity == "subscription" ? data?.id : null,
+
+      handler: async (response: any) => {
+        try {
+          const verifiedData: any = await CommonGatewayAxiosPost(verifyOrder, {
+            razorpay_order_id: response?.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
+            razorpay_subscription_id: response.razorpay_subscription_id,
+          });
+
+          if (
+            verifiedData.status === CommonConstants.API_RESPONSE_SUCCESSFULL
+          ) {
+            toast.success("Payment completed Successfully", {
+              position: toast.POSITION.TOP_CENTER,
+            });
+        } catch (error) {
+          console.log(error);
+        }
+      },
+      theme: {
+        color: "#5f63b8",
+      },
+    };
+    const rzp1 = (window as any).Razorpay(options);
+    rzp1.open();
+  };
+
+```
+
+### Add Razorpay Script in index.html
+
+Add the Razorpay script to your index.html file to enable the Razorpay checkout functionality:
+
+```<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Application</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>
+```
+
+## Conclusion
+
+You have successfully integrated Razorpay into the frontend of your Application. Now, users can initiate payments and verify transactions using the Razorpay API.

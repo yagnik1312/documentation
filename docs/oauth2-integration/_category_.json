@@ -1,0 +1,8 @@
+{
+  "label": "OAuth 2.0 Integration",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn to integrate OAuth 2.0 with passport in 10 min."
+  }
+}

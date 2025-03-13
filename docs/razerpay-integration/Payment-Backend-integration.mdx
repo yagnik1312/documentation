@@ -1,0 +1,152 @@
+---
+sidebar_position: 2
+---
+
+# Integrating Normal Payment Razorpay in Backend
+
+Learn how to integrate **Razorpay** into the backend of your Application.
+
+## Prerequisites
+
+Before you start, ensure you have the following:
+
+- Node.js version 18.0 or above
+- Razorpay account credentials (Key ID and Key Secret)
+
+## Steps to Integrate Razorpay
+
+### Step 1: Add Razorpay Credentials to .env File
+
+Create a `.env` file in the root directory of your backend project and add your Razorpay credentials:
+
+```env
+RAZORPAY_KEY_ID=your_key_id
+RAZORPAY_SECRET=your_key_secret
+```
+
+### Step 2: Create Razorpay Instance
+
+Create a file named payment.js
+
+```import Razorpay from 'razorpay';
+import 'dotenv/config';
+
+const razorpayInstance = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_SECRET,
+});
+```
+
+### Step 3: Create Order API Route
+
+Create an API route to generate a payment order:
+
+```import express from 'express';
+import crypto from 'crypto';
+
+const router = express.Router();
+
+// Route: POST http://localhost:4000/api/payment/order
+router.post('/order', (req, res) => {
+    const { amount } = req.body;
+
+    try {
+        const options = {
+            amount: Number(amount * 100), // amount in the smallest currency unit
+            currency: "INR",
+            receipt: crypto.randomBytes(10).toString("hex"),
+        };
+
+        razorpayInstance.orders.create(options, (error, order) => {
+            if (error) {
+                console.log(error);
+                return res.status(500).json({ message: "Something Went Wrong!" });
+            }
+            res.status(200).json({ data: order });
+            console.log(order);
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Internal Server Error!" });
+        console.log(error);
+    }
+});
+
+export default router;
+
+```
+
+### Step 4: Create Verify API Route
+
+Create an API route to verify the payment:
+
+```import express from 'express';
+import crypto from 'crypto';
+import Payment from '../models/Payment.js'; // Adjust path as necessary
+
+const router = express.Router();
+
+// Route: POST http://localhost:4000/api/payment/verify
+router.post('/verify', async (req, res) => {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    try {
+        // Create Sign
+        const sign = razorpay_order_id + "|" + razorpay_payment_id;
+
+        // Create ExpectedSign
+        const expectedSign = crypto.createHmac("sha256", process.env.RAZORPAY_SECRET)
+            .update(sign.toString())
+            .digest("hex");
+
+        // Verify Signature
+        const isAuthentic = expectedSign === razorpay_signature;
+
+        // Process Payment
+        if (isAuthentic) {
+            const payment = await Payment.create({
+                razorpay_order_id,
+                razorpay_payment_id,
+                razorpay_signature,
+            });
+
+            res.json({
+                message: "Payment Successfully",
+            });
+        } else {
+            res.status(400).json({ message: "Invalid Signature" });
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error!" });
+    }
+});
+
+export default router;
+
+```
+
+### Step 5: Usage in Your Server Setup
+
+In your main server file (server.js or app.js), set up the server to use the payment routes:
+
+```import express from 'express';
+import dotenv from 'dotenv';
+import paymentRoutes from './routes/payment.js';
+
+const app = express();
+dotenv.config();
+
+app.use(express.json());
+app.use('/api/payment', paymentRoutes);
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+```
+
+## Conclusion
+
+You have successfully integrated Razorpay into the backend of your Application. Now, you can create orders and verify payments using the Razorpay API.
+
+This structure divides the integration process into clear, sequential steps, starting from setting up Razorpay credentials to creating Razorpay instance, implementing API routes for ordering and verifying payments, and finally configuring your server to use these routes. Each step focuses on a specific task, making it easier to follow and implement.
